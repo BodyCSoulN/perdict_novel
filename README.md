@@ -23,3 +23,5 @@ python --load_model <model_path>
 3. 添加网络下载小说
 4. 处理`DataParallel`的问题(训练速度慢，比单GPU慢)，使用`Distributed Data parallel`训练更大的模型
 5. jieba分词结果对模型的影响研究(可能需要把词汇表修改一下)
+
+
