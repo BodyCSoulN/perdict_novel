@@ -7,6 +7,16 @@ The default novel is a chinese novel named '遮天'.
 pip install -r requirements.txt
 ```
 
+### Usage
+#### Train
+```bash
+python main.py train --save_model_path <save_model_path>
+```
+#### Predict
+```bash
+python main.py predict --load_model_path <load_model_path> --prefix <prefix>
+```
+
 ### Save Model
 ```bash
 python --save_model <save_path>

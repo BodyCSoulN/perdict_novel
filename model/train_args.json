@@ -1,0 +1,1 @@
+{"language": "chinese", "token": "char", "net": "GRU", "batch_size": 256, "num_steps": 35, "max_token": 1000000, "num_hiddens": 256, "num_layers": 1, "num_epochs": 500, "lr": 0.001, "load_model_path": null, "save_model_path": "model/a", "action": "train"}
