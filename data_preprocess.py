@@ -68,7 +68,7 @@ class Vocab:
 def load_novel(token, language, max_tokens=-1):
     lines = read_novel()
     tokens = tokenize(lines, token, language)
-    vocab = Vocab(tokens, 3)
+    vocab = Vocab(tokens, 0)
     corpus = [vocab[token] for line in tokens for token in line]
     if max_tokens > 0:
         corpus = corpus[:max_tokens]

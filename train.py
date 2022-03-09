@@ -40,15 +40,10 @@ def train_epoch(model, loss, updater, train_iter, device, use_random_iter=True):
         # print('y_hat.shape = ', y_hat.shape
         #      +'\ny.shape = ', y.shape)
         l = loss(y_hat, y.long()).mean()
-        if isinstance(updater, torch.optim.Optimizer):
-            updater.zero_grad()
-            l.backward()
-            grad_clipping(model, 1)
-            updater.step()
-        else:
-            l.backward()
-            grad_clipping(model, 1)
-            updater(batch_size=1)
+        updater.zero_grad()
+        l.backward()
+        grad_clipping(model, 1)
+        updater.step()
         metric.add(l * y.numel(), y.numel(), l)
     return math.exp(metric[0] / metric[1]), metric[1] / timer.stop(), l
     

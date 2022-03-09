@@ -4,7 +4,7 @@ from torch.nn import functional as F
 from data_preprocess import trans_dim
 
 class RNNModel(nn.Module):
-    """仅考虑单向的RNN，原因是双向RNN不适合进行预测"""
+    """仅考虑单向的RNN，双向RNN不适合进行预测"""
     def __init__(self, rnn_layer, vocab_size, **kwargs):
         super().__init__(**kwargs)
         self.rnn_layer = rnn_layer

@@ -1,1 +1,2 @@
 model/chinese_word_GRU_300epoch.pt filter=lfs diff=lfs merge=lfs -text
+model/0/chinese_char_300epochs_2m_LSTM.pt filter=lfs diff=lfs merge=lfs -text

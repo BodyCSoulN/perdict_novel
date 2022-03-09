@@ -1,0 +1,1 @@
+{"language": "chinese", "token": "char", "net": "LSTM", "batch_size": 256, "num_steps": 35, "max_token": 1000000, "num_hiddens": 256, "num_layers": 1, "num_epochs": 300, "lr": 0.001, "load_model_path": null, "save_model_path": "model/chinese_word_300epochs_2m_LSTM.pt", "action": "train"}
