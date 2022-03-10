@@ -5,6 +5,7 @@ import random
 import torch
 from torch.nn import functional as F
 from torch import nn
+from torch.utils.data import Dataset, DataLoader
 from d2l import torch as d2l
 import jieba
 
@@ -32,6 +33,7 @@ def corpus_counter(tokens):
     if len(tokens) == 0 or isinstance(tokens, list):
         tokens = [token for line in tokens for token in line]
     return collections.Counter(tokens)
+
 
 class Vocab:
     def __init__(self, tokens=None, min_freq=0, reserved_tokens=None):
@@ -63,8 +65,31 @@ class Vocab:
     def to_token(self, indices):
         if not isinstance(indices, (tuple, list)):
             return self.idx_to_token[indices]
-        return [self.__getitem__(index) for index in indices]
-    
+        return [self.to_token(index) for index in indices]
+
+
+class MyDataSet(Dataset):
+    def __init__(self, corpus, num_steps):
+        self.corpus = corpus
+        self.num_steps = num_steps
+        # 要把corpus变成若干个长度为num_steps的子序列，然后在getitem中返回
+        self.corpus = self.corpus[random.randint(0, num_steps - 1):]
+        num_subseq = (len(self.corpus) - 1) // num_steps
+        self.initial_indices = list(range(0, num_subseq * num_steps, num_steps))
+            
+    def __len__(self):
+        return len(self.initial_indices)
+    # dataloader会返回一个batch_size个__getitem__的数据
+    # 正常RNN的输入是[batch_size, num_steps, vocab_size]
+    # 在这里需要考虑num_step
+    def __getitem__(self, indices):
+        def data(pos):
+            # print('pos = ', pos)
+            return torch.tensor(self.corpus[pos:pos + self.num_steps])
+        # print('indices', indices)
+        return data(self.initial_indices[indices]), data(self.initial_indices[indices] + 1)
+
+
 def load_novel(token, language, max_tokens=-1):
     lines = read_novel()
     tokens = tokenize(lines, token, language)
@@ -74,35 +99,14 @@ def load_novel(token, language, max_tokens=-1):
         corpus = corpus[:max_tokens]
     return corpus, vocab
     
-def seq_data_iter_random(corpus, batch_size, time_steps):
-    corpus = corpus[random.randint(0, time_steps - 1):]
-    num_subseq = (len(corpus) - 1) // time_steps
-    initial_indices = list(range(0, num_subseq * time_steps, time_steps))
-    random.shuffle(initial_indices)
-    
-    def data(pos):
-        return corpus[pos: pos + time_steps]
-    
-    num_batches = num_subseq // batch_size
-    
-    for i in range(0, num_batches * batch_size, batch_size):
-        initial_indices_per_epoch = initial_indices[i:i + batch_size]
-        X = [data(j) for j in initial_indices_per_epoch]
-        Y = [data(j + 1) for j in initial_indices_per_epoch]
-        yield torch.tensor(X), torch.tensor(Y)
-
-class SeqSampler:
-    def __init__(self, batch_size, time_steps, token, language, max_tokens=1000000):
-        self.sampler = seq_data_iter_random
-        self.batch_size = batch_size
-        self.time_steps, self.max_tokens = time_steps, max_tokens
-        self.corpus, self.vocab = load_novel(token, language, self.max_tokens)
-    def __iter__(self):
-        return self.sampler(self.corpus, self.batch_size, self.time_steps)
-    
 def load_data_novel(batch_size, time_steps, token, language, max_tokens):
-    data_iter = SeqSampler(batch_size, time_steps, token, language, max_tokens)
-    return data_iter, data_iter.vocab
+    corpus, vocab = load_novel(token, language, max_tokens)
+    dataset = MyDataSet(corpus, time_steps)
+    dataloader = DataLoader(dataset=dataset,
+                        batch_size=batch_size,
+                        num_workers=8,
+                        pin_memory=True)
+    return dataloader, vocab
 
 def trans_dim(state):
     if isinstance(state, (tuple, list)):

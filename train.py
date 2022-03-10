@@ -63,6 +63,7 @@ def train_novel(model, train_iter, vocab, lr, num_epochs, device):
         if epoch % 10 == 0:
             print(f'loss: {l}')
             animator.add(epoch + 1, [ppl])
+    print(predict('叶凡'))
             
     print(f'困惑度 {ppl:.1f}, {speed:.1f} 词元/秒, loss: {l}')
     predict('叶凡')
@@ -77,10 +78,14 @@ def predict_novel(prefix, num_preds, model, vocab, device):
     get_inputs = lambda: torch.tensor([outputs[-1]], device=device).reshape(1, 1)
     
     for y in prefix[1:]:
+        state = trans_dim(state)
         _, state = model(get_inputs(), state)
+        state = trans_dim(state)
         outputs.append(vocab[y])
         
     for i in range(num_preds):
+        state = trans_dim(state)
         y, state = model(get_inputs(), state)
+        state = trans_dim(state)
         outputs.append(y.argmax(dim=1))
     return ''.join([vocab.to_token(index) for index in outputs])

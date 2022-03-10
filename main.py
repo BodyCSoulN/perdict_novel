@@ -33,23 +33,24 @@ def save_model(args, model):
         except Exception as e:
             print('save model error', e)
             print('the state dict of model is\n', model.state_dict())
+        else:
+            print('finish saving model.')
 
-def load_model(load_model_path, model):
-    if load_model_path:
+def load_model(load_model_name, model):
+    if load_model_name:
         try:
-            model_state_dict = torch.load(load_model_path)
+            model_state_dict = torch.load(load_model_name)
             model.load_state_dict(model_state_dict)
         except Exception as e:
             print('load model error', e)
             sys.exit()
-        return model
+    return model
 
 def to_train(args):
     batch_size, time_steps, max_tokens = args.batch_size, args.num_steps, args.max_token
     token, language = args.token, args.language
 
     train_iter, vocab = load_data_novel(batch_size, time_steps, token, language, max_tokens)
-
     vocab_size, num_hiddens, num_layers = len(vocab), args.num_hiddens, args.num_layers
     lr, num_epochs = args.lr, args.num_epochs
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -58,8 +59,8 @@ def to_train(args):
     
     model = RNNModel(rnn_layer, vocab_size).to(device)
     # model = nn.DataParallel(model, device_ids=[0, 1]).to(device)
-    load_model_path = args.load_model_path
-    model = load_model(load_model_path, model)
+    load_model_name = args.load_model_name
+    model = load_model(load_model_name, model)
     train_novel(model, train_iter, vocab, lr, num_epochs, device)
     
     save_model(args, model)
@@ -68,14 +69,14 @@ def to_predict(args):
     prefix = args.prefix
     num_preds = args.num_preds
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    load_model_path = args.load_model_path
-    model_dir = load_model_path.rsplit('/', 1)[0]
+    load_model_name = args.load_model_name
+    model_dir = load_model_name.rsplit('/', 1)[0]
     with open(model_dir + '/train_args.json', 'r', encoding='utf-8') as f:
         train_args = json.load(f)
     _, vocab = load_data_novel(train_args['batch_size'], train_args['num_steps'], train_args['token'], train_args['language'], train_args['max_token'])
     rnn_layer = get_rnn_layer(train_args['net'], len(vocab), train_args['num_hiddens'], train_args['num_layers'])
     model = RNNModel(rnn_layer, len(vocab)).to(device)
-    model = load_model(load_model_path, model)
+    model = load_model(load_model_name, model)
     res = predict_novel(prefix, num_preds, model, vocab, device)
     print(res)
 
@@ -100,7 +101,7 @@ if __name__ == '__main__':
     train_parser.set_defaults(action='train')
 
     predict_parser = subparser.add_parser('predict', help='predict the from the prefix')
-    predict_parser.add_argument('--load_model_path', type=str, default=None, required=True)
+    predict_parser.add_argument('--load_model_name', type=str, default=None, required=True)
     predict_parser.add_argument('--prefix', type=str, default="叶凡")
     predict_parser.add_argument('--num_preds', type=int, default=1000)
     predict_parser.set_defaults(action='predict')
