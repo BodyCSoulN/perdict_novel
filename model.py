@@ -14,12 +14,24 @@ class RNNModel(nn.Module):
         
     def forward(self, X, state):
         X = F.one_hot(X.T.long(), self.vocab_size).type(torch.float32)
-        # print('state shape before to layer', state.shape)
+        Y, state = self.rnn_layer(X, state)
+        outputs = self.linear(Y.reshape((-1, Y.shape[-1])))
+        return outputs, state
+
+    def forward_0(self, X, state):
+        X = F.one_hot(X.T.long(), self.vocab_size).type(torch.float32)
         state = trans_dim(state)
         Y, state = self.rnn_layer(X, state)
-        # print('state shape after to layer', state.shape)
         state = trans_dim(state)
         outputs = self.linear(Y.reshape((-1, Y.shape[-1])))
+        return outputs, state
+
+    def forward_1(self, X, state):
+        X = F.one_hot(X.long(), self.vocab_size).type(torch.float32)
+        state = state.contiguous()
+        Y, state = self.rnn_layer(X, state)
+        state = state.contiguous()
+        outputs = self.linear(Y.reshape((-1, Y.shape[-1]))).T
         return outputs, state
     
     def begin_state(self, batch_size, device):

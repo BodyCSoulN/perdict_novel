@@ -15,77 +15,104 @@ def grad_clipping(net, theta):
         for p in params:
             p.grad[:] = theta / norm * p.grad
 
-def train_epoch(model, loss, updater, train_iter, device, use_random_iter=True):
-    state, timer = None, d2l.Timer()
+def train_epoch(model, loss, updater, train_iter, device):
+    state = None
     metric = d2l.Accumulator(2)
     for X, Y in train_iter:
-        if state is None or use_random_iter:
-            if isinstance(model, nn.DataParallel):
-                state = model.module.begin_state(X.shape[0], device)
-            else:
-                state = model.begin_state(X.shape[0], device)
+        if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+            state = model.module.begin_state(X.shape[0], device)
         else:
-            # 在使用多gpu训练时 _detach出错。所以仅考虑随机采样
-            state._detach()
+            state = model.begin_state(X.shape[0], device)
         # 变成一个1维的向量
         y = Y.T.reshape(-1)
-        X, y = X.to(device), y.to(device)
-        # print('state shape before to model', state.shape)
-        state = trans_dim(state)
+        X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
         y_hat, state = model(X, state)
-        # print('state shape after from model', state.shape)
-        state = trans_dim(state)
-        
-        # y_hat.shape = y.shape * vocab_size
-        # print('y_hat.shape = ', y_hat.shape
-        #      +'\ny.shape = ', y.shape)
         l = loss(y_hat, y.long()).mean()
         updater.zero_grad()
         l.backward()
-        grad_clipping(model, 1)
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1, norm_type=2)
         updater.step()
         metric.add(l * y.numel(), y.numel(), l)
-    return math.exp(metric[0] / metric[1]), metric[1] / timer.stop(), l
+    return math.exp(metric[0] / metric[1]), l
+
+def train_epoch_data_parallel_1(model, loss, updater, train_iter, device):
+    state = None
+    metric = d2l.Accumulator(2)
+    for X, Y in train_iter:
+        if isinstance(model, torch.nn.DataParallel):
+            state = model.module.begin_state(X.shape[0], device)
+        else:
+            state = model.begin_state(X.shape[0], device)
+        y = Y.T.reshape(-1)
+        X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
+        X = X.T
+        y_hat, state = model(X, state)
+        y_hat = y_hat.T
+        l = loss(y_hat, y.long()).mean()
+        updater.zero_grad()
+        l.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1, norm_type=2)
+        updater.step()
+        metric.add(l * y.numel(), y.numel(), l)
+    return math.exp(metric[0] / metric[1]), l
     
-        
+def train_epoch_data_parallel_0(model, loss, updater, train_iter, device):
+    state = None
+    metric = d2l.Accumulator(2)
+    for X, Y in train_iter:
+        if isinstance(model, torch.nn.DataParallel):
+            state = model.module.begin_state(X.shape[0], device)
+        else:
+            state = model.begin_state(X.shape[0], device)
+        y = Y.T.reshape(-1)
+        X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
+        state = trans_dim(state)
+        y_hat, state = model(X, state)
+        state = trans_dim(state)
+        l = loss(y_hat, y.long()).mean()
+        updater.zero_grad()
+        l.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1, norm_type=2)
+        updater.step()
+        metric.add(l * y.numel(), y.numel(), l)
+    return math.exp(metric[0] / metric[1]), l     
     
-def train_novel(model, train_iter, vocab, lr, num_epochs, device):
-    animator = d2l.Animator(xlabel='epoch', ylabel='perplexity',
-                            legend=['train'], xlim=[10, num_epochs])
-    if isinstance(model, nn.Module):
-        updater = torch.optim.Adam(model.parameters(), lr)
-    else:
-        updater = lambda batch_size: d2l.sgd(model.params, lr, batch_size)
+def train_novel(model, local_rank, train_iter, lr, num_epochs, device):
+    model.train()
+    updater = torch.optim.Adam(model.parameters(), lr)
     loss = nn.CrossEntropyLoss()
-    predict = lambda prefix: predict_novel(prefix, 100, model, vocab, device)
+    model = torch.nn.parallel.DistributedDataParallel(model,
+                                                      device_ids=[local_rank],
+                                                      output_device=local_rank)
+    timer = d2l.Timer()
     for epoch in range(num_epochs):
-        ppl, speed, l = train_epoch(model, loss, updater, train_iter, device)
+        timer.start()
+        ppl, l = train_epoch(model, loss, updater, train_iter, device)
+        timer.stop()
         if epoch % 10 == 0:
-            print(f'loss: {l}')
-            animator.add(epoch + 1, [ppl])
-    print(predict('叶凡'))
-            
-    print(f'困惑度 {ppl:.1f}, {speed:.1f} 词元/秒, loss: {l}')
-    predict('叶凡')
+            print(f'loss: {l:.2f}, training time per epoch: {timer.avg():.2f}',
+                f'in device {str(local_rank)}')
+    print(f'困惑度 {ppl:.1f}')
+    # print(predict('叶凡'))
     
 def predict_novel(prefix, num_preds, model, vocab, device):
-    if isinstance(model, nn.DataParallel):
+    model.eval()
+    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
         state = model.module.begin_state(1, device)
     else:
         state = model.begin_state(1, device)
     outputs = [vocab[prefix[0]]]
-    
     get_inputs = lambda: torch.tensor([outputs[-1]], device=device).reshape(1, 1)
     
     for y in prefix[1:]:
-        state = trans_dim(state)
+        # state = trans_dim(state)
         _, state = model(get_inputs(), state)
-        state = trans_dim(state)
+        # state = trans_dim(state)
         outputs.append(vocab[y])
         
     for i in range(num_preds):
-        state = trans_dim(state)
+        # state = trans_dim(state)
         y, state = model(get_inputs(), state)
-        state = trans_dim(state)
+        # state = trans_dim(state)
         outputs.append(y.argmax(dim=1))
     return ''.join([vocab.to_token(index) for index in outputs])

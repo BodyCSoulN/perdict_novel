@@ -11,11 +11,13 @@ from train import train_novel
 from train import predict_novel
 from data_preprocess import load_data_novel
 
+local_rank = int(os.environ["LOCAL_RANK"])
+
 def get_rnn_layer(net, vocab_size, num_hiddens, num_layers):
     if net == 'GRU':
         return nn.GRU(vocab_size, num_hiddens, num_layers)
     elif net == 'LSTM':
-        return nn.LSTM(vocab_size, num_hiddens, num_layers)
+        return nn.LSTM(vocab_size, num_hiddens, num_layers, dropout=0.5)
     else:
         print('unrecognized net, use RNN as default')
         return nn.RNN(vocab_size, num_hiddens, num_layers)
@@ -47,21 +49,23 @@ def load_model(load_model_name, model):
     return model
 
 def to_train(args):
+    torch.cuda.set_device(local_rank)
+    device = torch.device('cuda', local_rank)
+    torch.distributed.init_process_group(backend="nccl", init_method='env://')
+
     batch_size, time_steps, max_tokens = args.batch_size, args.num_steps, args.max_token
     token, language = args.token, args.language
 
     train_iter, vocab = load_data_novel(batch_size, time_steps, token, language, max_tokens)
+
     vocab_size, num_hiddens, num_layers = len(vocab), args.num_hiddens, args.num_layers
-    lr, num_epochs = args.lr, args.num_epochs
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    net = args.net
+    lr, num_epochs, net = args.lr, args.num_epochs, args.net
     rnn_layer = get_rnn_layer(net, vocab_size, num_hiddens, num_layers)
-    
     model = RNNModel(rnn_layer, vocab_size).to(device)
-    # model = nn.DataParallel(model, device_ids=[0, 1]).to(device)
     load_model_name = args.load_model_name
     model = load_model(load_model_name, model)
-    train_novel(model, train_iter, vocab, lr, num_epochs, device)
+    # print('start training model. The training args are:\n', args.__dict__)
+    train_novel(model, local_rank, train_iter, lr, num_epochs, device)
     
     save_model(args, model)
 
@@ -83,8 +87,8 @@ def to_predict(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--local_rank', type=int, default=0, help='rank of distributed processes')
     subparser = parser.add_subparsers()
-
     train_parser = subparser.add_parser('train', help='training the model')
     train_parser.add_argument('--language', type=str, default='chinese')
     train_parser.add_argument('--token', type=str, default='char')
@@ -107,7 +111,7 @@ if __name__ == '__main__':
     predict_parser.set_defaults(action='predict')
 
     args = parser.parse_args()
-
+    
     if args.action == 'train':
         to_train(args)
     elif args.action == 'predict':

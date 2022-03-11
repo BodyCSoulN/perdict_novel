@@ -12,7 +12,7 @@ import jieba
 def read_novel(filepath='/data/datasets/d2l_data/cover_sky.txt'):
     with open(filepath, 'r', encoding='gbk') as f:
         lines = f.readlines()
-        print('len of lines:', len(lines))
+        # print('len of lines:', len(lines))
         # 简单的把空行、空格都去掉
         return [re.sub('\s', ' ', line) for line in lines]
     
@@ -84,9 +84,7 @@ class MyDataSet(Dataset):
     # 在这里需要考虑num_step
     def __getitem__(self, indices):
         def data(pos):
-            # print('pos = ', pos)
             return torch.tensor(self.corpus[pos:pos + self.num_steps])
-        # print('indices', indices)
         return data(self.initial_indices[indices]), data(self.initial_indices[indices] + 1)
 
 
@@ -102,14 +100,18 @@ def load_novel(token, language, max_tokens=-1):
 def load_data_novel(batch_size, time_steps, token, language, max_tokens):
     corpus, vocab = load_novel(token, language, max_tokens)
     dataset = MyDataSet(corpus, time_steps)
+    train_sampler = torch.utils.data.distributed.DistributedSampler(dataset)
     dataloader = DataLoader(dataset=dataset,
                         batch_size=batch_size,
+                        # shuffle=True,
                         num_workers=8,
-                        pin_memory=True)
+                        pin_memory=True,
+                        sampler=train_sampler
+                        )
     return dataloader, vocab
 
 def trans_dim(state):
     if isinstance(state, (tuple, list)):
-        return [s.permute([1, 0, 2]) for s in state]
+        return [s.permute([1, 0, 2]).contiguous() for s in state]
     else:
-        return state.permute([1, 0, 2])
+        return state.permute([1, 0, 2]).contiguous()
