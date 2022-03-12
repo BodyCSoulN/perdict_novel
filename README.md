@@ -1,4 +1,4 @@
-# Perdict_novel
+## Perdict_novel
 A novel prediction RNN model with torch.
 
 The default novel is a chinese novel named '遮天'.
